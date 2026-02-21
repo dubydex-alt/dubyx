@@ -1,18 +1,28 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const https = require('https');
 
-const projectDir = process.cwd();
-console.log('CWD:', projectDir);
-console.log('Files in CWD:');
-fs.readdirSync(projectDir).forEach(f => console.log(' ', f));
+const zipUrl = 'https://v0chat-agent-data-prod.s3.us-east-1.amazonaws.com/vm-binary/SO18crdGK19/f5d4992e8f834b7a89807e941b2dce5a0592ea768403f6129b86cd8a5b9b48f2.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIA52KF4VHQDTZ5RDMT%2F20260221%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260221T105454Z&X-Amz-Expires=3600&X-Amz-Signature=c4ed782cbfa05a3101ed4eeb803e1cc834b265d0e71f2c89d415be6511737705&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject';
 
-const zipPath = path.join(projectDir, 'NEWO.zip');
-console.log('Zip exists?', fs.existsSync(zipPath));
+function downloadFile(url) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    https.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return downloadFile(res.headers.location).then(resolve).catch(reject);
+      }
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+}
 
-if (fs.existsSync(zipPath)) {
-  const zipBuffer = fs.readFileSync(zipPath);
-  console.log('Zip file size:', zipBuffer.length, 'bytes');
+async function main() {
+  console.log('Downloading NEWO.zip...');
+  const zipBuffer = await downloadFile(zipUrl);
+  console.log('Downloaded. Size:', zipBuffer.length, 'bytes');
 
   // Find End of Central Directory
   let eocdOffset = -1;
@@ -32,7 +42,7 @@ if (fs.existsSync(zipPath)) {
   const cdEntries = zipBuffer.readUInt16LE(eocdOffset + 10);
   console.log('Found ' + cdEntries + ' entries in ZIP');
 
-  const extractDir = path.join(projectDir, 'extracted');
+  const extractDir = path.join(process.cwd(), 'extracted');
   fs.mkdirSync(extractDir, { recursive: true });
 
   let offset = cdOffset;
@@ -77,8 +87,28 @@ if (fs.existsSync(zipPath)) {
     offset += 46 + nameLen + extraLen + commentLen;
   }
 
-  console.log('\nExtracted files:');
+  console.log('\nAll files in ZIP:');
   fileList.forEach(f => console.log(' ', f));
-} else {
-  console.log('ERROR: NEWO.zip not found');
+
+  // Show PHP files specifically
+  const phpFiles = fileList.filter(f => f.endsWith('.php'));
+  console.log('\nPHP files found:');
+  phpFiles.forEach(f => console.log(' ', f));
+
+  // Show schema-related files
+  const schemaFiles = fileList.filter(f => f.toLowerCase().includes('schema') || f.toLowerCase().includes('database') || f.toLowerCase().includes('db') || f.toLowerCase().includes('migration') || f.toLowerCase().includes('install') || f.toLowerCase().includes('setup'));
+  console.log('\nSchema/DB related files:');
+  schemaFiles.forEach(f => console.log(' ', f));
+
+  // Print contents of schema-related PHP files
+  for (const sf of schemaFiles.filter(f => f.endsWith('.php'))) {
+    const filePath = path.join(extractDir, sf);
+    if (fs.existsSync(filePath)) {
+      console.log('\n=== CONTENT OF ' + sf + ' ===');
+      console.log(fs.readFileSync(filePath, 'utf8'));
+      console.log('=== END OF ' + sf + ' ===');
+    }
+  }
 }
+
+main().catch(e => console.error('Error:', e.message));
