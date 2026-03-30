@@ -3,6 +3,7 @@ const THEME_KEY = "product-keep-theme";
 const MAX_IMAGES_PER_ITEM = 40;
 const MAX_IMAGE_DIMENSION = 1600;
 const IMAGE_OUTPUT_QUALITY = 0.82;
+const ENCRYPTION_ITERATIONS = 120000;
 
 const defaultState = {
   activeFolderId: null,
@@ -35,6 +36,7 @@ const els = {
   folderModal: document.getElementById("folderModal"),
   folderForm: document.getElementById("folderForm"),
   folderNameInput: document.getElementById("folderNameInput"),
+  folderPasswordInput: document.getElementById("folderPasswordInput"),
   itemModal: document.getElementById("itemModal"),
   itemForm: document.getElementById("itemForm"),
   itemModalTitle: document.getElementById("itemModalTitle"),
@@ -80,6 +82,7 @@ function bootstrap() {
     state.filterBy = "all";
   }
   applyTheme(loadTheme());
+  setThemeToggleIcon(loadTheme());
   ensureInitialFolder();
   bindEvents();
   syncControls();
@@ -107,7 +110,9 @@ function bindEvents() {
   els.themeToggleBtn.addEventListener("click", () => {
     const next = els.body.classList.contains("dark") ? "light" : "dark";
     applyTheme(next);
+    setThemeToggleIcon(next);
     saveTheme(next);
+    showToast(`Theme changed to ${next} mode`, "success");
   });
 
   els.newFolderBtn.addEventListener("click", openFolderModal);
@@ -201,9 +206,9 @@ function saveState() {
   } catch (error) {
     console.error("Failed to save state", error);
     if (isQuotaExceededError(error)) {
-      showToast("Storage full. Try fewer/smaller images or export backup.");
+      showToast("Storage full. Try fewer/smaller images or export backup.", "error");
     } else {
-      showToast("Could not save changes");
+      showToast("Could not save changes", "error");
     }
     return false;
   }
@@ -384,7 +389,7 @@ function renderItems() {
       item.favorite = !item.favorite;
       item.updatedAt = new Date().toISOString();
       persistAndRender();
-      showToast(item.favorite ? "Added to favorites" : "Removed from favorites");
+      showToast(item.favorite ? "Added to favorites" : "Removed from favorites", "success");
     });
 
     fragment.querySelectorAll("[data-action]").forEach((button) => {
@@ -454,6 +459,7 @@ function handleFolderSubmit(event) {
   state.folders.unshift({
     id: createId("folder"),
     name,
+    exportPassword: els.folderPasswordInput.value.trim(),
     createdAt: new Date().toISOString(),
     items: []
   });
@@ -461,11 +467,11 @@ function handleFolderSubmit(event) {
   saveState();
   closeFolderModal();
   render();
-  showToast("Folder created");
+  showToast("Folder created", "success");
 }
 
 function handleFolderContext(folder) {
-  const action = window.prompt(`Folder: ${folder.name}\nType "rename" or "delete"`, "rename");
+  const action = window.prompt(`Folder: ${folder.name}\nType "rename", "password", or "delete"`, "rename");
   if (!action) return;
 
   if (action.toLowerCase() === "rename") {
@@ -474,12 +480,22 @@ function handleFolderContext(folder) {
     folder.name = nextName.trim() || folder.name;
     saveState();
     render();
-    showToast("Folder renamed");
+    showToast("Folder renamed", "success");
     return;
   }
 
   if (action.toLowerCase() === "delete") {
     deleteFolder(folder.id);
+    return;
+  }
+
+  if (action.toLowerCase() === "password") {
+    const nextPassword = window.prompt("Set export password (leave blank to clear)", folder.exportPassword || "");
+    if (nextPassword === null) return;
+    folder.exportPassword = nextPassword.trim();
+    saveState();
+    showToast(folder.exportPassword ? "Folder password saved" : "Folder password cleared", "success");
+    render();
   }
 }
 
@@ -487,7 +503,7 @@ function deleteFolder(folderId) {
   const folder = state.folders.find((entry) => entry.id === folderId);
   if (!folder) return;
   if (state.folders.length === 1) {
-    showToast("At least one folder is required");
+    showToast("At least one folder is required", "error");
     return;
   }
 
@@ -498,13 +514,13 @@ function deleteFolder(folderId) {
   state.activeFolderId = state.folders[0].id;
   saveState();
   render();
-  showToast("Folder deleted");
+  showToast("Folder deleted", "success");
 }
 
 function openItemModal(itemId = null) {
   const folder = getActiveFolder();
   if (!folder) {
-    showToast("Create a folder first");
+    showToast("Create a folder first", "error");
     return;
   }
 
@@ -547,13 +563,13 @@ async function handleImageSelection(event) {
   const availableSlots = Math.max(0, MAX_IMAGES_PER_ITEM - draftImages.length);
   const acceptedFiles = files.slice(0, availableSlots);
   if (!acceptedFiles.length) {
-    showToast(`Maximum ${MAX_IMAGES_PER_ITEM} images allowed per item`);
+    showToast(`Maximum ${MAX_IMAGES_PER_ITEM} images allowed per item`, "error");
     event.target.value = "";
     return;
   }
 
   if (files.length > acceptedFiles.length) {
-    showToast(`Only ${acceptedFiles.length} images added (item limit reached)`);
+    showToast(`Only ${acceptedFiles.length} images added (item limit reached)`, "error");
   }
 
   const optimizedImages = [];
@@ -566,14 +582,15 @@ async function handleImageSelection(event) {
   }
 
   if (!optimizedImages.length) {
-    showToast("Could not process selected images");
+    showToast("Could not process selected images", "error");
     event.target.value = "";
     return;
   }
 
   draftImages = [...draftImages, ...optimizedImages];
+  showToast(`${optimizedImages.length} image${optimizedImages.length === 1 ? "" : "s"} uploaded`, "success");
   if (getEstimatedStateSize() > 4.5 * 1024 * 1024) {
-    showToast("Large image data detected. Export backup regularly.");
+    showToast("Large image data detected. Export backup regularly.", "error");
   }
   renderImagePreviewGrid();
   els.itemImageInput.value = "";
@@ -608,7 +625,7 @@ function handleItemSubmit(event) {
   };
 
   if (!itemData.title) {
-    showToast("Title is required");
+    showToast("Title is required", "error");
     return;
   }
 
@@ -618,12 +635,12 @@ function handleItemSubmit(event) {
       itemData.createdAt = folder.items[index].createdAt;
       itemData.order = folder.items[index].order ?? index;
       folder.items[index] = itemData;
-      showToast("Item updated");
+      showToast("Item updated", "success");
     }
   } else {
     folder.items.unshift(itemData);
     normalizeFolderItems(folder);
-    showToast("Item added");
+    showToast("Item added", "success");
   }
 
   const saved = saveState();
@@ -650,7 +667,7 @@ function handleItemAction(action, itemId) {
     folder.items = folder.items.filter((entry) => entry.id !== itemId);
     saveState();
     render();
-    showToast("Item deleted");
+    showToast("Item deleted", "success");
     return;
   }
 
@@ -662,12 +679,12 @@ function handleItemAction(action, itemId) {
   if (action === "copy-link") {
     const links = getItemLinks(item);
     if (!links.length) {
-      showToast("No links available to copy");
+      showToast("No links available to copy", "error");
       return;
     }
     copyToClipboard(links.map(formatLinkLine).join("\n"))
-      .then(() => showToast(links.length === 1 ? "Link copied" : "Links copied"))
-      .catch(() => showToast("Could not copy link"));
+      .then(() => showToast(links.length === 1 ? "Link copied" : "Links copied", "success"))
+      .catch(() => showToast("Could not copy link", "error"));
   }
 }
 
@@ -813,12 +830,11 @@ function renderViewer(item) {
 function exportActiveFolder() {
   const folder = getActiveFolder();
   if (!folder) return;
-  downloadJson({
+  handleSecureExport({
     exportedAt: new Date().toISOString(),
-    version: 1,
-    folder
-  }, `${slugify(folder.name)}-folder-backup.json`);
-  showToast("Folder exported");
+    version: 2,
+    folder: stripFolderSensitiveFields(folder)
+  }, `${slugify(folder.name)}-folder-backup.json`, `folder "${folder.name}"`, folder.exportPassword || "");
 }
 
 async function exportActiveFolderImages() {
@@ -826,12 +842,12 @@ async function exportActiveFolderImages() {
   if (!folder) return;
   const itemsWithImages = folder.items.filter((item) => getItemImages(item).length);
   if (!itemsWithImages.length) {
-    showToast("No images found in this folder");
+    showToast("No images found in this folder", "error");
     return;
   }
 
   if (!window.showDirectoryPicker) {
-    showToast("Image export needs Chrome/Edge File System API support");
+    showToast("Image export needs Chrome/Edge File System API support", "error");
     return;
   }
 
@@ -856,25 +872,52 @@ async function exportActiveFolderImages() {
       }
     }
 
-    showToast("Images exported in folder/product/image structure");
+    showToast("Images exported in folder/product/image structure", "success");
   } catch (error) {
     if (error && error.name === "AbortError") {
-      showToast("Export canceled");
+      showToast("Export canceled", "error");
       return;
     }
     console.error("Failed to export images", error);
-    showToast("Could not export images");
+    showToast("Could not export images", "error");
   }
 }
 
 function exportAllData() {
-  downloadJson({
+  handleSecureExport({
     exportedAt: new Date().toISOString(),
-    version: 1,
+    version: 2,
     app: "Dubydex Product Management (DPM)",
-    state
-  }, "dpm-backup.json");
-  showToast("Backup exported");
+    state: {
+      ...state,
+      folders: state.folders.map(stripFolderSensitiveFields)
+    }
+  }, "dpm-backup.json", "full backup");
+}
+
+async function handleSecureExport(payload, fileName, scopeLabel, defaultPassword = "") {
+  const typedPassword = window.prompt(`Optional password for ${scopeLabel} export.\nLeave blank for no password (or blank to use folder default).`, "");
+  if (typedPassword === null) {
+    showToast("Export canceled", "error");
+    return;
+  }
+  const password = typedPassword.trim() || defaultPassword;
+
+  if (!typedPassword.trim() && defaultPassword) {
+    showToast("Using saved folder password for export", "success");
+  }
+
+  try {
+    let exportPayload = payload;
+    if (password.trim()) {
+      exportPayload = await encryptPayload(payload, password.trim());
+    }
+    downloadJson(exportPayload, fileName);
+    showToast(password.trim() ? "Password protected export complete" : "Export complete", "success");
+  } catch (error) {
+    console.error("Export failed", error);
+    showToast("Export failed", "error");
+  }
 }
 
 async function handleImport(event) {
@@ -884,18 +927,22 @@ async function handleImport(event) {
   try {
     const content = await file.text();
     const parsed = JSON.parse(content);
+    const importPayload = parsed.encrypted ? await promptAndDecryptImport(parsed) : parsed;
+    if (!importPayload) {
+      return;
+    }
 
-    if (parsed.state && Array.isArray(parsed.state.folders)) {
+    if (importPayload.state && Array.isArray(importPayload.state.folders)) {
       state = {
         ...defaultState,
-        ...parsed.state,
-        folders: parsed.state.folders
+        ...importPayload.state,
+        folders: importPayload.state.folders
       };
-    } else if (parsed.folder && parsed.folder.id) {
+    } else if (importPayload.folder && importPayload.folder.id) {
       const importedFolder = {
-        ...parsed.folder,
+        ...importPayload.folder,
         id: createId("folder"),
-        name: getUniqueFolderName(parsed.folder.name || "Imported Folder")
+        name: getUniqueFolderName(importPayload.folder.name || "Imported Folder")
       };
       state.folders.unshift(importedFolder);
       state.activeFolderId = importedFolder.id;
@@ -907,12 +954,28 @@ async function handleImport(event) {
     ensureInitialFolder();
     saveState();
     render();
-    showToast("Import complete");
+    showToast("Import complete", "success");
   } catch (error) {
     console.error(error);
-    showToast("Import failed. Check the JSON file.");
+    showToast("Import failed. Check file/password.", "error");
   } finally {
     event.target.value = "";
+  }
+}
+
+async function promptAndDecryptImport(parsed) {
+  const password = window.prompt("This backup is password protected. Enter password to import:", "");
+  if (password === null) {
+    showToast("Import canceled", "error");
+    return null;
+  }
+
+  try {
+    return await decryptPayload(parsed, password.trim());
+  } catch (error) {
+    console.error("Decryption failed", error);
+    showToast("Wrong password or corrupted file", "error");
+    return null;
   }
 }
 
@@ -1048,6 +1111,12 @@ function applyTheme(theme) {
   els.body.classList.toggle("dark", theme === "dark");
 }
 
+function setThemeToggleIcon(theme) {
+  const isDark = theme === "dark";
+  els.themeToggleBtn.textContent = isDark ? "☀" : "☾";
+  els.themeToggleBtn.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+}
+
 function createBadge(text) {
   const badge = document.createElement("span");
   badge.className = "badge";
@@ -1055,9 +1124,15 @@ function createBadge(text) {
   return badge;
 }
 
-function showToast(message) {
+function showToast(message, type = "info") {
   clearTimeout(toastTimer);
   els.toast.textContent = message;
+  els.toast.classList.remove("toast--success", "toast--error");
+  if (type === "success") {
+    els.toast.classList.add("toast--success");
+  } else if (type === "error") {
+    els.toast.classList.add("toast--error");
+  }
   els.toast.classList.add("show");
   toastTimer = setTimeout(() => {
     els.toast.classList.remove("show");
@@ -1243,6 +1318,88 @@ function mimeTypeToExtension(type) {
   return "jpg";
 }
 
+async function encryptPayload(payload, password) {
+  const plainText = JSON.stringify(payload);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveEncryptionKey(password, salt);
+  const encoded = new TextEncoder().encode(plainText);
+  const cipherBuffer = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
+
+  return {
+    version: 2,
+    encrypted: true,
+    algorithm: "AES-GCM",
+    kdf: "PBKDF2",
+    iterations: ENCRYPTION_ITERATIONS,
+    salt: bytesToBase64(salt),
+    iv: bytesToBase64(iv),
+    payload: bytesToBase64(new Uint8Array(cipherBuffer))
+  };
+}
+
+async function decryptPayload(encryptedData, password) {
+  if (!encryptedData || !encryptedData.encrypted) {
+    throw new Error("Invalid encrypted payload");
+  }
+
+  const salt = base64ToBytes(encryptedData.salt);
+  const iv = base64ToBytes(encryptedData.iv);
+  const cipherBytes = base64ToBytes(encryptedData.payload);
+  const key = await deriveEncryptionKey(password, salt, encryptedData.iterations || ENCRYPTION_ITERATIONS);
+  const plainBuffer = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    key,
+    cipherBytes
+  );
+
+  const decoded = new TextDecoder().decode(plainBuffer);
+  return JSON.parse(decoded);
+}
+
+async function deriveEncryptionKey(password, salt, iterations = ENCRYPTION_ITERATIONS) {
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations,
+      hash: "SHA-256"
+    },
+    baseKey,
+    {
+      name: "AES-GCM",
+      length: 256
+    },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  bytes.forEach((value) => {
+    binary += String.fromCharCode(value);
+  });
+  return btoa(binary);
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
 function sanitizeFileName(value) {
   return String(value || "")
     .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
@@ -1261,6 +1418,12 @@ function uniqueFolderName(base, usedNames) {
   }
   usedNames.add(candidate.toLowerCase());
   return candidate;
+}
+
+function stripFolderSensitiveFields(folder) {
+  const cloned = { ...folder };
+  delete cloned.exportPassword;
+  return cloned;
 }
 
 function escapeHtml(value) {
