@@ -1,5 +1,8 @@
 const STORAGE_KEY = "product-keep-app-v1";
 const THEME_KEY = "product-keep-theme";
+const MAX_IMAGES_PER_ITEM = 40;
+const MAX_IMAGE_DIMENSION = 1600;
+const IMAGE_OUTPUT_QUALITY = 0.82;
 
 const defaultState = {
   activeFolderId: null,
@@ -23,6 +26,7 @@ const els = {
   themeToggleBtn: document.getElementById("themeToggleBtn"),
   addItemBtn: document.getElementById("addItemBtn"),
   emptyAddBtn: document.getElementById("emptyAddBtn"),
+  exportImagesBtn: document.getElementById("exportImagesBtn"),
   exportFolderBtn: document.getElementById("exportFolderBtn"),
   exportAllBtn: document.getElementById("exportAllBtn"),
   importInput: document.getElementById("importInput"),
@@ -109,6 +113,7 @@ function bindEvents() {
   els.newFolderBtn.addEventListener("click", openFolderModal);
   els.addItemBtn.addEventListener("click", () => openItemModal());
   els.emptyAddBtn.addEventListener("click", () => openItemModal());
+  els.exportImagesBtn.addEventListener("click", exportActiveFolderImages);
   els.exportFolderBtn.addEventListener("click", exportActiveFolder);
   els.exportAllBtn.addEventListener("click", exportAllData);
   els.importInput.addEventListener("change", handleImport);
@@ -190,7 +195,18 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch (error) {
+    console.error("Failed to save state", error);
+    if (isQuotaExceededError(error)) {
+      showToast("Storage full. Try fewer/smaller images or export backup.");
+    } else {
+      showToast("Could not save changes");
+    }
+    return false;
+  }
 }
 
 function persistAndRender(save = true) {
@@ -528,8 +544,37 @@ async function handleImageSelection(event) {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
 
-  const dataUrls = await Promise.all(files.map((file) => fileToDataUrl(file)));
-  draftImages = [...draftImages, ...dataUrls];
+  const availableSlots = Math.max(0, MAX_IMAGES_PER_ITEM - draftImages.length);
+  const acceptedFiles = files.slice(0, availableSlots);
+  if (!acceptedFiles.length) {
+    showToast(`Maximum ${MAX_IMAGES_PER_ITEM} images allowed per item`);
+    event.target.value = "";
+    return;
+  }
+
+  if (files.length > acceptedFiles.length) {
+    showToast(`Only ${acceptedFiles.length} images added (item limit reached)`);
+  }
+
+  const optimizedImages = [];
+  for (const file of acceptedFiles) {
+    try {
+      optimizedImages.push(await fileToOptimizedDataUrl(file));
+    } catch (error) {
+      console.error("Failed to process image", error);
+    }
+  }
+
+  if (!optimizedImages.length) {
+    showToast("Could not process selected images");
+    event.target.value = "";
+    return;
+  }
+
+  draftImages = [...draftImages, ...optimizedImages];
+  if (getEstimatedStateSize() > 4.5 * 1024 * 1024) {
+    showToast("Large image data detected. Export backup regularly.");
+  }
   renderImagePreviewGrid();
   els.itemImageInput.value = "";
 }
@@ -581,7 +626,10 @@ function handleItemSubmit(event) {
     showToast("Item added");
   }
 
-  saveState();
+  const saved = saveState();
+  if (!saved) {
+    return;
+  }
   closeItemModal();
   render();
 }
@@ -771,6 +819,52 @@ function exportActiveFolder() {
     folder
   }, `${slugify(folder.name)}-folder-backup.json`);
   showToast("Folder exported");
+}
+
+async function exportActiveFolderImages() {
+  const folder = getActiveFolder();
+  if (!folder) return;
+  const itemsWithImages = folder.items.filter((item) => getItemImages(item).length);
+  if (!itemsWithImages.length) {
+    showToast("No images found in this folder");
+    return;
+  }
+
+  if (!window.showDirectoryPicker) {
+    showToast("Image export needs Chrome/Edge File System API support");
+    return;
+  }
+
+  try {
+    const rootHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    const folderHandle = await rootHandle.getDirectoryHandle(sanitizeFileName(folder.name) || "folder", { create: true });
+    const usedProductNames = new Set();
+
+    for (let itemIndex = 0; itemIndex < itemsWithImages.length; itemIndex += 1) {
+      const item = itemsWithImages[itemIndex];
+      const productTitle = item.title || `product-${itemIndex + 1}`;
+      const productFolderName = uniqueFolderName(sanitizeFileName(productTitle) || `product-${itemIndex + 1}`, usedProductNames);
+      const productHandle = await folderHandle.getDirectoryHandle(productFolderName, { create: true });
+      const images = getItemImages(item);
+
+      for (let imageIndex = 0; imageIndex < images.length; imageIndex += 1) {
+        const { blob, extension } = await imageSourceToBlob(images[imageIndex]);
+        const fileHandle = await productHandle.getFileHandle(`img${imageIndex + 1}.${extension}`, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      }
+    }
+
+    showToast("Images exported in folder/product/image structure");
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      showToast("Export canceled");
+      return;
+    }
+    console.error("Failed to export images", error);
+    showToast("Could not export images");
+  }
 }
 
 function exportAllData() {
@@ -1071,6 +1165,102 @@ function copyToClipboard(value) {
       reject(error);
     }
   });
+}
+
+function isQuotaExceededError(error) {
+  return Boolean(error) && (
+    error.name === "QuotaExceededError"
+    || error.name === "NS_ERROR_DOM_QUOTA_REACHED"
+    || error.code === 22
+    || error.code === 1014
+  );
+}
+
+function getEstimatedStateSize() {
+  try {
+    return new Blob([JSON.stringify(state)]).size;
+  } catch (error) {
+    return 0;
+  }
+}
+
+async function fileToOptimizedDataUrl(file) {
+  const originalDataUrl = await fileToDataUrl(file);
+  const image = await loadImage(originalDataUrl);
+  const target = getScaledDimensions(image.naturalWidth, image.naturalHeight, MAX_IMAGE_DIMENSION);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = target.width;
+  canvas.height = target.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return originalDataUrl;
+  }
+
+  context.drawImage(image, 0, 0, target.width, target.height);
+  const optimized = canvas.toDataURL("image/webp", IMAGE_OUTPUT_QUALITY);
+  return optimized.length < originalDataUrl.length ? optimized : originalDataUrl;
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+function getScaledDimensions(width, height, maxDimension) {
+  if (width <= maxDimension && height <= maxDimension) {
+    return { width, height };
+  }
+
+  const scale = Math.min(maxDimension / width, maxDimension / height);
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale))
+  };
+}
+
+async function imageSourceToBlob(src) {
+  const response = await fetch(src);
+  if (!response.ok) {
+    throw new Error("Image fetch failed");
+  }
+
+  const blob = await response.blob();
+  const extension = mimeTypeToExtension(blob.type);
+  return { blob, extension };
+}
+
+function mimeTypeToExtension(type) {
+  if (type === "image/png") return "png";
+  if (type === "image/webp") return "webp";
+  if (type === "image/gif") return "gif";
+  if (type === "image/bmp") return "bmp";
+  if (type === "image/svg+xml") return "svg";
+  return "jpg";
+}
+
+function sanitizeFileName(value) {
+  return String(value || "")
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[. ]+$/g, "")
+    .slice(0, 80);
+}
+
+function uniqueFolderName(base, usedNames) {
+  let candidate = base;
+  let counter = 1;
+  while (usedNames.has(candidate.toLowerCase())) {
+    counter += 1;
+    candidate = `${base}-${counter}`;
+  }
+  usedNames.add(candidate.toLowerCase());
+  return candidate;
 }
 
 function escapeHtml(value) {
