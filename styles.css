@@ -671,6 +671,14 @@ a { color: inherit; }
   z-index: 60;
 }
 
+.toast--success {
+  background: rgba(20, 110, 74, 0.94);
+}
+
+.toast--error {
+  background: rgba(150, 42, 42, 0.95);
+}
+
 .toast.show { opacity: 1; transform: translateY(0); }
 
 .modal__dialog--viewer {
