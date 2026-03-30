@@ -62,7 +62,7 @@
               <option value="price-desc">Price High-Low</option>
             </select>
           </label>
-          <button class="icon-btn" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">Mode</button>
+          <button class="icon-btn" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">☾</button>
           <button class="primary-btn" id="addItemBtn" type="button">+ Add Item</button>
         </div>
       </header>
@@ -104,6 +104,10 @@
         <label class="field">
           <span>Folder name</span>
           <input id="folderNameInput" name="folderName" type="text" maxlength="40" placeholder="Example: Electronics" required>
+        </label>
+        <label class="field">
+          <span>Optional export password</span>
+          <input id="folderPasswordInput" name="folderPassword" type="password" maxlength="64" placeholder="Leave blank for no password">
         </label>
         <div class="modal__actions">
           <button class="ghost-btn" type="button" data-close-folder-modal>Cancel</button>
@@ -252,4 +256,3 @@
   <script src="./app.js"></script>
 </body>
 </html>
-
