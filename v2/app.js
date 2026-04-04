@@ -1,7 +1,6 @@
 const PRODUCTS_TABLE = "products";
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const MAX_IMAGES_PER_ITEM = 40;
-const PLATFORM_PASSWORD = "123";
 
 const config = window.SUPABASE_CONFIG || {};
 const supabaseClient = window.supabase && config.url && config.anonKey
@@ -21,10 +20,6 @@ const state = {
 const els = {
   body: document.body,
   appShell: document.getElementById("appShell"),
-  platformGate: document.getElementById("platformGate"),
-  platformPasswordForm: document.getElementById("platformPasswordForm"),
-  platformPasswordInput: document.getElementById("platformPasswordInput"),
-  platformPasswordError: document.getElementById("platformPasswordError"),
   sidebar: document.getElementById("sidebar"),
   folderList: document.getElementById("folderList"),
   folderCount: document.getElementById("folderCount"),
@@ -89,8 +84,6 @@ let activeOverlayTaskId = null;
 init();
 
 async function init() {
-  const accessGranted = await requestPlatformAccess();
-  if (!accessGranted) return;
   bindEvents();
   renderLinkRows();
   applyTheme();
@@ -150,39 +143,6 @@ function bindEvents() {
   document.querySelectorAll("[data-close-folder-modal]").forEach((node) => node.addEventListener("click", closeFolderModal));
   document.querySelectorAll("[data-close-item-modal]").forEach((node) => node.addEventListener("click", closeItemModal));
   document.querySelectorAll("[data-close-viewer-modal]").forEach((node) => node.addEventListener("click", closeViewerModal));
-}
-
-async function requestPlatformAccess() {
-  if (!els.platformPasswordForm || !els.platformPasswordInput) return true;
-
-  els.platformGate.classList.remove("hidden");
-  els.platformGate.setAttribute("aria-hidden", "false");
-  els.appShell.classList.add("hidden");
-
-  return new Promise((resolve) => {
-    const handleSubmit = (event) => {
-      event.preventDefault();
-      const password = els.platformPasswordInput.value.trim();
-      if (password !== PLATFORM_PASSWORD) {
-        els.platformPasswordError.textContent = "Wrong password. Try again.";
-        els.platformPasswordError.classList.add("toast--error");
-        els.platformPasswordInput.value = "";
-        els.platformPasswordInput.focus();
-        return;
-      }
-
-      els.platformPasswordError.textContent = "";
-      els.platformPasswordError.classList.remove("toast--error");
-      els.platformGate.classList.add("hidden");
-      els.platformGate.setAttribute("aria-hidden", "true");
-      els.appShell.classList.remove("hidden");
-      els.platformPasswordForm.removeEventListener("submit", handleSubmit);
-      resolve(true);
-    };
-
-    els.platformPasswordForm.addEventListener("submit", handleSubmit);
-    setTimeout(() => els.platformPasswordInput.focus(), 0);
-  });
 }
 
 function ensureFallbackFolder() {
