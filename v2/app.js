@@ -1108,6 +1108,7 @@ function showUploadOverlay(task) {
   els.uploadBackgroundBtn.disabled = task.status !== "running" || !!task.blocking;
   els.uploadCancelBtn.classList.toggle("hidden", !!task.blocking);
   els.uploadBackgroundBtn.classList.toggle("hidden", !!task.blocking);
+  els.body.classList.add("upload-overlay-active");
 }
 
 function hideUploadOverlay() {
@@ -1116,6 +1117,7 @@ function hideUploadOverlay() {
   els.uploadOverlay.setAttribute("aria-hidden", "true");
   els.uploadCancelBtn.classList.remove("hidden");
   els.uploadBackgroundBtn.classList.remove("hidden");
+  els.body.classList.remove("upload-overlay-active");
 }
 
 function cancelActiveOverlayTask() {
