@@ -10,26 +10,7 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div class="modal" id="platformGate" aria-hidden="false">
-    <div class="modal__backdrop"></div>
-    <div class="modal__dialog modal__dialog--small">
-      <div class="modal__header">
-        <h3>Platform Access</h3>
-      </div>
-      <form id="platformPasswordForm" class="modal__form">
-        <label class="field">
-          <span>Enter platform password</span>
-          <input id="platformPasswordInput" name="platformPassword" type="password" maxlength="32" placeholder="Enter password" required>
-        </label>
-        <p class="helper-text" id="platformPasswordError">Password required to open this platform.</p>
-        <div class="modal__actions">
-          <button class="primary-btn" type="submit">Unlock</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="app-shell hidden" id="appShell">
+  <div class="app-shell" id="appShell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar__brand">
         <div class="brand-mark">DPM</div>
