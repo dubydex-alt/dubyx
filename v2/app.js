@@ -1,7 +1,7 @@
 const PRODUCTS_TABLE = "products";
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const MAX_IMAGES_PER_ITEM = 40;
-const PLATFORM_PASSWORD = "adi";
+const PLATFORM_PASSWORD = "123";
 
 const config = window.SUPABASE_CONFIG || {};
 const supabaseClient = window.supabase && config.url && config.anonKey
