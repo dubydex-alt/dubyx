@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dubydex Product Management (DPM)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="modal" id="platformGate" aria-hidden="false">
+    <div class="modal__backdrop"></div>
+    <div class="modal__dialog modal__dialog--small">
+      <div class="modal__header">
+        <h3>Platform Access</h3>
+      </div>
+      <form id="platformPasswordForm" class="modal__form">
+        <label class="field">
+          <span>Enter platform password</span>
+          <input id="platformPasswordInput" name="platformPassword" type="password" maxlength="32" placeholder="Enter password" required>
+        </label>
+        <p class="helper-text" id="platformPasswordError">Password required to open this platform.</p>
+        <div class="modal__actions">
+          <button class="primary-btn" type="submit">Unlock</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-shell hidden" id="appShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__brand">
+        <div class="brand-mark">DPM</div>
+        <div>
+          <p class="eyebrow">Dubydex Workspace</p>
+          <h3>Dubydex Product Management</h3>
+        </div>
+      </div>
+      <button class="primary-btn primary-btn--full" id="newFolderBtn" type="button">+ New Folder</button>
+      <section class="sidebar__section">
+        <div class="section-title">
+          <span>Folders</span>
+          <span id="folderCount">0</span>
+        </div>
+        <div class="folder-list" id="folderList"></div>
+        <p class="sidebar-hint">Use Delete to remove a folder. Right-click a folder to rename it.</p>
+      </section>
+      <section class="sidebar__section sidebar__section--bottom">
+        <div class="section-title">
+          <span>Backup</span>
+        </div>
+        <div class="sidebar-actions"></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn mobile-only" id="toggleSidebarBtn" type="button" aria-label="Toggle folders">Menu</button>
+        <div class="topbar__title-wrap">
+          <p class="eyebrow">DPM Dashboard</p>
+          <h2 id="activeFolderTitle">My Products</h2>
+        </div>
+        <div class="topbar__controls">
+          <label class="search-field">
+            <span>Search</span>
+            <input id="searchInput" type="search" placeholder="Find by title, description, or link">
+          </label>
+          <label class="select-field">
+            <span>Sort</span>
+            <select id="sortSelect">
+              <option value="latest">Latest</option>
+              <option value="name-asc">Name A-Z</option>
+              <option value="name-desc">Name Z-A</option>
+              <option value="price-asc">Price Low-High</option>
+              <option value="price-desc">Price High-Low</option>
+            </select>
+          </label>
+          <button class="icon-btn" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">☾</button>
+          <button class="primary-btn" id="addItemBtn" type="button">+ Add Item</button>
+        </div>
+      </header>
+
+      <section class="toolbar">
+        <div class="toolbar__chips">
+          <button class="chip chip--active" type="button" data-filter="all">All</button>
+          <button class="chip" type="button" data-filter="pinned">Pinned</button>
+          <button class="chip" type="button" data-filter="favorites">Favorites</button>
+        </div>
+        <div class="toolbar__actions">
+          <button class="ghost-btn" id="exportOrganizedImagesBtn" type="button">Export Images in Organized Folders</button>
+        </div>
+      </section>
+
+      <section class="stats-grid" id="statsGrid"></section>
+
+      <section class="content-area">
+        <div class="empty-state hidden" id="emptyState">
+          <div class="empty-state__art"></div>
+          <h3>No items yet</h3>
+          <p>Add your first product, save links, and keep everything organized by folder.</p>
+          <button class="primary-btn" id="emptyAddBtn" type="button">Create First Item</button>
+        </div>
+        <div class="card-grid" id="itemGrid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal hidden" id="folderModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-folder-modal></div>
+    <div class="modal__dialog modal__dialog--small">
+      <div class="modal__header">
+        <h3>Create Folder</h3>
+        <button class="icon-btn" type="button" data-close-folder-modal>Close</button>
+      </div>
+      <form id="folderForm" class="modal__form">
+        <label class="field">
+          <span>Folder name</span>
+          <input id="folderNameInput" name="folderName" type="text" maxlength="40" placeholder="Example: Electronics" required>
+        </label>
+        <div class="modal__actions">
+          <button class="ghost-btn" type="button" data-close-folder-modal>Cancel</button>
+          <button class="primary-btn" type="submit">Save Folder</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="itemModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-item-modal></div>
+    <div class="modal__dialog">
+      <div class="modal__header">
+        <div>
+          <p class="eyebrow">Product Form</p>
+          <h3 id="itemModalTitle">Add Item</h3>
+        </div>
+        <button class="icon-btn" type="button" data-close-item-modal>Close</button>
+      </div>
+      <form id="itemForm" class="modal__form">
+        <input id="itemIdInput" name="itemId" type="hidden">
+        <div class="form-grid">
+          <div class="field field--full">
+            <span>Images</span>
+            <label class="upload-dropzone" for="itemImageInput">
+              <input id="itemImageInput" type="file" accept="image/*" multiple>
+              <div class="upload-dropzone__text">
+                <strong>Upload one or more product images</strong>
+                <p>PNG, JPG, WEBP supported. Uploaded to Supabase Storage.</p>
+              </div>
+            </label>
+            <div id="imagePreviewGrid" class="image-preview-grid hidden"></div>
+          </div>
+          <label class="field">
+            <span>Title</span>
+            <input id="titleInput" name="title" type="text" maxlength="80" placeholder="Wireless Keyboard" required>
+          </label>
+          <label class="field">
+            <span>Price</span>
+            <input id="priceInput" name="price" type="number" min="0" step="0.01" placeholder="1999" required>
+          </label>
+          <label class="field field--full">
+            <span>Links</span>
+            <div id="linkRows" class="link-rows"></div>
+            <button class="ghost-btn ghost-btn--sm link-add-btn" id="addLinkRowBtn" type="button">+ Add Link</button>
+          </label>
+          <label class="field field--full">
+            <span>Description</span>
+            <textarea id="descriptionInput" name="description" rows="5" maxlength="500" placeholder="Add key notes, specs, or selling points"></textarea>
+          </label>
+          <label class="check-field">
+            <input id="pinnedInput" name="pinned" type="checkbox">
+            <span>Pin this item</span>
+          </label>
+          <label class="check-field">
+            <input id="favoriteInput" name="favorite" type="checkbox">
+            <span>Mark as favorite</span>
+          </label>
+        </div>
+        <div class="modal__actions">
+          <button class="ghost-btn" id="removeImageBtn" type="button">Remove Images</button>
+          <div class="modal__actions-right">
+            <button class="ghost-btn" type="button" data-close-item-modal>Cancel</button>
+            <button class="primary-btn" type="submit">Save Item</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <template id="folderItemTemplate">
+    <div class="folder-pill-wrap">
+      <button class="folder-pill" type="button">
+        <span class="folder-pill__info">
+          <strong class="folder-pill__name"></strong>
+          <small class="folder-pill__meta"></small>
+        </span>
+        <span class="folder-pill__actions">
+          <span class="folder-pill__pin"></span>
+        </span>
+      </button>
+      <button class="folder-pill__delete" type="button" aria-label="Delete folder">Delete</button>
+    </div>
+  </template>
+
+  <template id="itemCardTemplate">
+    <article class="item-card" draggable="true">
+      <div class="item-card__image-wrap">
+        <img class="item-card__image hidden" alt="">
+        <div class="item-card__placeholder">No Image</div>
+        <div class="item-card__badges"></div>
+        <button class="item-card__view-media hidden" data-action="view-media" type="button">Full Screen</button>
+      </div>
+      <div class="item-card__body">
+        <div class="item-card__head">
+          <div>
+            <h3 class="item-card__title"></h3>
+            <p class="item-card__price"></p>
+          </div>
+          <button class="icon-btn item-card__favorite-toggle" type="button" aria-label="Toggle favorite">Fav</button>
+        </div>
+        <p class="item-card__description"></p>
+        <div class="item-card__links hidden"></div>
+        <div class="item-card__footer">
+          <small class="item-card__date"></small>
+          <div class="item-card__actions">
+            <button class="ghost-btn ghost-btn--sm" data-copy-field="title" type="button">🎫 Title</button>
+            <button class="ghost-btn ghost-btn--sm" data-copy-field="description" type="button">🎫 Desc..</button>
+            <button class="ghost-btn ghost-btn--sm" data-copy-field="price" type="button">🎫 Price</button>
+            <button class="ghost-btn ghost-btn--sm" data-action="copy-link" type="button">🎫 Links</button>
+            <button class="ghost-btn ghost-btn--sm" data-action="edit" type="button">Edit</button>
+            <button class="ghost-btn ghost-btn--sm ghost-btn--danger" data-action="delete" type="button">Delete</button>
+          </div>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <div class="modal hidden" id="viewerModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-viewer-modal></div>
+    <div class="modal__dialog modal__dialog--viewer">
+      <div class="modal__header">
+        <div>
+          <p class="eyebrow">Full Screen Viewer</p>
+          <h3 id="viewerTitle">Item Preview</h3>
+        </div>
+        <button class="icon-btn" type="button" data-close-viewer-modal>Close</button>
+      </div>
+      <div class="viewer">
+        <div class="viewer__stage-wrap">
+          <button class="viewer__nav" id="viewerPrevBtn" type="button" aria-label="Previous image">Prev</button>
+          <div class="viewer__stage">
+            <img id="viewerImage" class="viewer__image hidden" alt="">
+            <div id="viewerEmpty" class="viewer__empty">No images for this item</div>
+          </div>
+          <button class="viewer__nav" id="viewerNextBtn" type="button" aria-label="Next image">Next</button>
+        </div>
+        <div id="viewerThumbs" class="viewer__thumbs"></div>
+        <div class="viewer__meta">
+          <p id="viewerImageMeta" class="viewer__image-meta"></p>
+          <p id="viewerDescription" class="viewer__description"></p>
+          <div id="viewerLinks" class="viewer__links"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="upload-overlay hidden" id="uploadOverlay" aria-hidden="true">
+    <div class="upload-overlay__backdrop"></div>
+    <div class="upload-overlay__dialog">
+      <p class="eyebrow">Background Upload</p>
+      <h3 id="uploadOverlayTitle">Saving product...</h3>
+      <p class="upload-overlay__status" id="uploadOverlayStatus">Preparing files</p>
+      <div class="upload-progress">
+        <div class="upload-progress__bar" id="uploadOverlayBar"></div>
+      </div>
+      <div class="upload-overlay__meta">
+        <span id="uploadOverlaySize">0 MB / 0 MB</span>
+        <span id="uploadOverlayPercent">0%</span>
+      </div>
+      <div class="upload-overlay__actions">
+        <button class="ghost-btn ghost-btn--danger" id="uploadCancelBtn" type="button">Cancel</button>
+        <button class="primary-btn" id="uploadBackgroundBtn" type="button">Work in Background</button>
+      </div>
+    </div>
+  </div>
+
+  <aside class="upload-tasks" id="uploadTasks"></aside>
+
+  <div class="toast" id="toast"></div>
+  <script>
+    (function () {
+      const fieldMap = {
+        title: ".item-card__title",
+        description: ".item-card__description",
+        price: ".item-card__price"
+      };
+
+      async function copyText(value) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(value);
+          return;
+        }
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+
+      function showCopyToast(message, type) {
+        const toast = document.getElementById("toast");
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.remove("toast--success", "toast--error", "show");
+        toast.classList.add(type === "error" ? "toast--error" : "toast--success");
+        requestAnimationFrame(() => toast.classList.add("show"));
+        clearTimeout(window.__copyToastTimer);
+        window.__copyToastTimer = setTimeout(() => toast.classList.remove("show"), 1800);
+      }
+
+      document.addEventListener("click", async function (event) {
+        const button = event.target.closest("[data-copy-field]");
+        if (!button) return;
+
+        const field = button.getAttribute("data-copy-field");
+        const selector = fieldMap[field];
+        const card = button.closest(".item-card");
+        const target = card && selector ? card.querySelector(selector) : null;
+        const value = target ? target.textContent.trim() : "";
+
+        if (!value) {
+          showCopyToast("Nothing to copy", "error");
+          return;
+        }
+
+        const originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = "Copying...";
+        try {
+          await copyText(value);
+          button.textContent = "Copied";
+          showCopyToast("Copied successfully", "success");
+        } catch (error) {
+          button.textContent = "Failed";
+          showCopyToast("Copy failed", "error");
+        } finally {
+          setTimeout(function () {
+            button.disabled = false;
+            button.textContent = originalLabel;
+          }, 900);
+        }
+      });
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./supabase-config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
